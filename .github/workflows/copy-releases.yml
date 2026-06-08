@@ -1,0 +1,73 @@
+name: Copy Releases From admin8800/s-ui
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  copy-releases:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Copy all releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_REPO: admin8800/s-ui
+          TARGET_REPO: hbsx/s-ui-private
+        run: |
+          set -e
+
+          echo "开始从 $SOURCE_REPO 复制 Releases 到 $TARGET_REPO"
+
+          tags=$(gh release list -R "$SOURCE_REPO" --limit 1000 --json tagName --jq '.[].tagName')
+
+          if [ -z "$tags" ]; then
+            echo "源仓库没有找到 Releases"
+            exit 0
+          fi
+
+          for tag in $tags; do
+            echo "======================================"
+            echo "正在处理版本：$tag"
+
+            workdir="/tmp/release-$tag"
+            rm -rf "$workdir"
+            mkdir -p "$workdir"
+
+            title=$(gh release view "$tag" -R "$SOURCE_REPO" --json name --jq '.name // ""')
+            body=$(gh release view "$tag" -R "$SOURCE_REPO" --json body --jq '.body // ""')
+            is_prerelease=$(gh release view "$tag" -R "$SOURCE_REPO" --json isPrerelease --jq '.isPrerelease')
+
+            if [ -z "$title" ]; then
+              title="$tag"
+            fi
+
+            echo "下载 $tag 的附件..."
+            gh release download "$tag" -R "$SOURCE_REPO" -D "$workdir" --clobber || true
+
+            echo "检查目标仓库是否已有 Release：$tag"
+            if gh release view "$tag" -R "$TARGET_REPO" >/dev/null 2>&1; then
+              echo "目标仓库已存在 $tag，跳过创建，只上传/覆盖附件"
+            else
+              echo "创建目标 Release：$tag"
+
+              if [ "$is_prerelease" = "true" ]; then
+                gh release create "$tag" -R "$TARGET_REPO" --title "$title" --notes "$body" --prerelease
+              else
+                gh release create "$tag" -R "$TARGET_REPO" --title "$title" --notes "$body"
+              fi
+            fi
+
+            if ls "$workdir"/* >/dev/null 2>&1; then
+              echo "上传附件到目标仓库..."
+              gh release upload "$tag" "$workdir"/* -R "$TARGET_REPO" --clobber
+            else
+              echo "该 Release 没有附件，跳过上传"
+            fi
+
+            echo "版本 $tag 处理完成"
+          done
+
+          echo "全部 Releases 复制完成"

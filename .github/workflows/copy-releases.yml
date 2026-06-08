@@ -15,7 +15,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_REPO: admin8800/s-ui
-          TARGET_REPO: hbsx/s-ui-private
+          TARGET_REPO: hbsx/s-ui
         run: |
           set -e
 
@@ -47,12 +47,10 @@ jobs:
             echo "下载 $tag 的附件..."
             gh release download "$tag" -R "$SOURCE_REPO" -D "$workdir" --clobber || true
 
-            echo "检查目标仓库是否已有 Release：$tag"
             if gh release view "$tag" -R "$TARGET_REPO" >/dev/null 2>&1; then
               echo "目标仓库已存在 $tag，跳过创建，只上传/覆盖附件"
             else
               echo "创建目标 Release：$tag"
-
               if [ "$is_prerelease" = "true" ]; then
                 gh release create "$tag" -R "$TARGET_REPO" --title "$title" --notes "$body" --prerelease
               else
